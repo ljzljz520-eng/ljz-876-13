@@ -55,6 +55,30 @@ const routes = [
     name: 'Statistics',
     component: () => import('../views/statistics/Index.vue'),
     meta: { requiresAuth: true, roles: ['admin', 'teacher'] }
+  },
+  {
+    path: '/grading',
+    name: 'GradingWorkbench',
+    component: () => import('../views/grading/Workbench.vue'),
+    meta: { requiresAuth: true, roles: ['admin', 'teacher'] }
+  },
+  {
+    path: '/review',
+    name: 'ReviewWorkbench',
+    component: () => import('../views/grading/Review.vue'),
+    meta: { requiresAuth: true, roles: ['admin', 'reviewer'] }
+  },
+  {
+    path: '/grading/progress',
+    name: 'GradingProgress',
+    component: () => import('../views/grading/Progress.vue'),
+    meta: { requiresAuth: true, roles: ['admin', 'teacher', 'reviewer'] }
+  },
+  {
+    path: '/classes',
+    name: 'Classes',
+    component: () => import('../views/classes/Index.vue'),
+    meta: { requiresAuth: true, roles: ['admin'] }
   }
 ]
 

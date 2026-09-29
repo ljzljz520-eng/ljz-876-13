@@ -71,4 +71,15 @@ class Question extends Model
         return $this->belongsToMany(ExamPaper::class, 'exam_paper_questions')
             ->withPivot('sort_order', 'score');
     }
+
+    public function rubricPoints()
+    {
+        return $this->hasMany(GradingRubricPoint::class, 'question_id')
+            ->orderBy('sort_order');
+    }
+
+    public function isEssay(): bool
+    {
+        return $this->type === self::TYPE_ESSAY;
+    }
 }

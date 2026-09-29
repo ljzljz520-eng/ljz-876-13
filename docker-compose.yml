@@ -77,7 +77,7 @@ services:
               email VARCHAR(100) NOT NULL UNIQUE COMMENT '邮箱',
               password VARCHAR(255) NOT NULL COMMENT '密码(bcrypt加密)',
               real_name VARCHAR(50) COMMENT '真实姓名',
-              role ENUM('admin', 'teacher', 'student') DEFAULT 'student' COMMENT '角色',
+              role ENUM('admin', 'teacher', 'reviewer', 'student') DEFAULT 'student' COMMENT '角色: admin-管理员 teacher-阅卷老师 reviewer-复核老师 student-学生',
               status TINYINT(1) DEFAULT 1 COMMENT '状态: 1-启用 0-禁用',
               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -88,8 +88,39 @@ services:
 
           INSERT INTO users (username, email, password, real_name, role, status) VALUES
           ('admin', 'admin@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', '系统管理员', 'admin', 1),
-          ('teacher', 'teacher@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', '教师用户', 'teacher', 1),
-          ('student1', 'student1@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', '学生用户1', 'student', 1);
+          ('teacher', 'teacher@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', '阅卷老师', 'teacher', 1),
+          ('reviewer', 'reviewer@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', '复核老师', 'reviewer', 1),
+          ('student1', 'student1@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', '学生用户1', 'student', 1),
+          ('student2', 'student2@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', '学生用户2', 'student', 1);
+
+          CREATE TABLE IF NOT EXISTS classes (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              name VARCHAR(100) NOT NULL COMMENT '班级名称',
+              description VARCHAR(255) COMMENT '班级描述',
+              created_by BIGINT UNSIGNED COMMENT '创建人ID',
+              status TINYINT(1) DEFAULT 1 COMMENT '状态: 1-启用 0-禁用',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              UNIQUE KEY uk_classes_name (name),
+              INDEX idx_classes_status (status)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='班级表';
+
+          CREATE TABLE IF NOT EXISTS class_student (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              class_id BIGINT UNSIGNED NOT NULL COMMENT '班级ID',
+              user_id BIGINT UNSIGNED NOT NULL COMMENT '学生用户ID',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              UNIQUE KEY uk_class_student (class_id, user_id),
+              INDEX idx_cs_user_id (user_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='班级-学生关联表';
+
+          INSERT INTO classes (id, name, description, created_by, status) VALUES
+          (1, '计算机一班', '2026 级计算机专业 1 班', 1, 1),
+          (2, '计算机二班', '2026 级计算机专业 2 班', 1, 1);
+
+          INSERT INTO class_student (class_id, user_id)
+          SELECT 1, id FROM users WHERE username IN ('student1', 'student2');
 
           CREATE TABLE IF NOT EXISTS question_categories (
               id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -141,7 +172,9 @@ services:
           (6, 'single_choice', 'Python中用于输出的是哪个函数？', '{"A": "print()", "B": "echo()", "C": "console.log()", "D": "printf()"}', 'A', 'Python使用print()函数输出', 1, 1.00, 2, 1),
           (6, 'multiple_choice', 'Python的特点有哪些？', '{"A": "简单易学", "B": "跨平台", "C": "编译型语言", "D": "解释型语言"}', 'ABD', 'Python是解释型语言，不是编译型', 1, 3.00, 2, 1),
           (8, 'single_choice', 'MySQL中用于查询数据的语句是？', '{"A": "SELECT", "B": "INSERT", "C": "UPDATE", "D": "DELETE"}', 'A', 'SELECT用于查询数据', 1, 2.00, 2, 1),
-          (8, 'true_false', 'MySQL是一种关系型数据库管理系统。', NULL, 'true', 'MySQL是最流行的开源关系型数据库之一', 1, 1.00, 2, 1);
+          (8, 'true_false', 'MySQL是一种关系型数据库管理系统。', NULL, 'true', 'MySQL是最流行的开源关系型数据库之一', 1, 1.00, 2, 1),
+          (8, 'essay', '请简述事务的 ACID 特性，并说明隔离性的作用。', NULL, '原子性、一致性、隔离性、持久性；隔离性保证并发事务互不干扰。', '分别解释四个特性，答出 ACID 全称并解释隔离性即可满分', 2, 5.00, 2, 1),
+          (5, 'essay', '请比较数组与链表在内存布局和插入/删除效率上的差异。', NULL, '数组连续存储、支持随机访问但中间插入删除需移动元素；链表离散存储、插入删除 O(1) 但不支持随机访问。', '从内存连续性、随机访问、插入删除代价三个方面比较', 2, 5.00, 2, 1);
 
           CREATE TABLE IF NOT EXISTS exam_papers (
               id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -162,7 +195,8 @@ services:
           INSERT INTO exam_papers (title, description, total_score, total_time, question_count, type, created_by, status) VALUES
           ('计算机基础测试', '测试计算机基础知识，包含操作系统和数据结构', 10.00, 30, 3, 'fixed', 2, 1),
           ('Python入门测试', 'Python基础知识测试', 8.00, 20, 2, 'fixed', 2, 1),
-          ('数据库基础测试', '数据库基础知识测试', 3.00, 15, 2, 'fixed', 2, 1);
+          ('数据库基础测试', '数据库基础知识测试', 3.00, 15, 2, 'fixed', 2, 1),
+          ('主观题模拟测验', '包含客观题与主观题，主观题采用分层批阅（初评 + 复核）', 8.00, 30, 2, 'fixed', 2, 1);
 
           CREATE TABLE IF NOT EXISTS exam_paper_questions (
               id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -184,7 +218,9 @@ services:
           (2, 5, 2, 3.00),
           (2, 6, 3, 2.00),
           (3, 6, 1, 2.00),
-          (3, 7, 2, 1.00);
+          (3, 7, 2, 1.00),
+          (4, 8, 1, 5.00),
+          (4, 9, 2, 3.00);
 
           CREATE TABLE IF NOT EXISTS exam_records (
               id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -226,6 +262,91 @@ services:
               `owner` VARCHAR(255) NOT NULL,
               `expiration` INT NOT NULL
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Laravel缓存锁表';
+
+          CREATE TABLE IF NOT EXISTS grading_rubric_points (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              question_id BIGINT UNSIGNED NOT NULL COMMENT '主观题ID',
+              title VARCHAR(200) NOT NULL COMMENT '评分点名称',
+              description VARCHAR(500) COMMENT '评分点说明/参考答案要点',
+              score DECIMAL(5,2) NOT NULL DEFAULT 0.00 COMMENT '该评分点满分',
+              sort_order INT DEFAULT 0 COMMENT '排序',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX idx_grp_question_id (question_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='主观题评分点表';
+
+          INSERT INTO grading_rubric_points (question_id, title, description, score, sort_order) VALUES
+          (8, 'ACID 四个特性', '答出原子性、一致性、隔离性、持久性四项，每项 0.75 分', 3.00, 1),
+          (8, '隔离性的作用', '说明隔离性保证并发事务之间互不干扰，避免脏读/不可重复读等', 2.00, 2),
+          (9, '内存布局差异', '数组连续存储可随机访问；链表离散存储靠指针链接', 1.50, 1),
+          (9, '插入删除效率差异', '数组中间插入删除需移动元素 O(n)；链表修改指针即可 O(1)', 1.50, 2);
+
+          CREATE TABLE IF NOT EXISTS essay_gradings (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              exam_record_answer_id BIGINT UNSIGNED NOT NULL COMMENT '考生答案ID',
+              exam_record_id BIGINT UNSIGNED NOT NULL COMMENT '考试记录ID',
+              question_id BIGINT UNSIGNED NOT NULL COMMENT '题目ID',
+              status ENUM('pending', 'review_pending', 'finalized') NOT NULL DEFAULT 'pending' COMMENT '批阅状态: pending-待初评 review_pending-待复核 finalized-已定稿',
+              initial_grader_id BIGINT UNSIGNED COMMENT '初评阅卷老师ID',
+              initial_score DECIMAL(5,2) DEFAULT NULL COMMENT '初评总分',
+              initial_comment VARCHAR(1000) COMMENT '初评简短评语(对学生可见)',
+              initial_gradeds_at TIMESTAMP NULL COMMENT '初评时间',
+              is_high_score_sample TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否高分样卷: 1-是 0-否',
+              is_disputed TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否争议题: 1-是 0-否',
+              reviewer_id BIGINT UNSIGNED COMMENT '复核老师ID',
+              final_score DECIMAL(5,2) DEFAULT NULL COMMENT '复核后最终得分',
+              final_comment VARCHAR(1000) COMMENT '复核评语(对学生可见)',
+              reviewed_at TIMESTAMP NULL COMMENT '复核时间',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              UNIQUE KEY uk_eg_answer (exam_record_answer_id),
+              INDEX idx_eg_record (exam_record_id),
+              INDEX idx_eg_question (question_id),
+              INDEX idx_eg_status (status),
+              INDEX idx_eg_grader (initial_grader_id),
+              INDEX idx_eg_reviewer (reviewer_id),
+              INDEX idx_eg_disputed (is_disputed),
+              INDEX idx_eg_sample (is_high_score_sample)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='主观题批阅表(分层批阅主表)';
+
+          CREATE TABLE IF NOT EXISTS essay_grading_points (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              essay_grading_id BIGINT UNSIGNED NOT NULL COMMENT '批阅记录ID',
+              rubric_point_id BIGINT UNSIGNED NOT NULL COMMENT '评分点ID',
+              initial_score DECIMAL(5,2) DEFAULT NULL COMMENT '初评该评分点得分',
+              final_score DECIMAL(5,2) DEFAULT NULL COMMENT '复核后该评分点得分',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              UNIQUE KEY uk_egp_grading_rubric (essay_grading_id, rubric_point_id),
+              INDEX idx_egp_rubric (rubric_point_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='主观题各评分点得分表';
+
+          CREATE TABLE IF NOT EXISTS grading_audit_logs (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              essay_grading_id BIGINT UNSIGNED NOT NULL COMMENT '批阅记录ID',
+              action VARCHAR(50) NOT NULL COMMENT '操作类型: initial_submit/auto_high_sample/review_confirm/review_adjust/flag_dispute/remove_dispute/flag_sample/internal_comment/score_modify',
+              operator_id BIGINT UNSIGNED COMMENT '操作人ID',
+              score_before DECIMAL(5,2) DEFAULT NULL COMMENT '变更前总分',
+              score_after DECIMAL(5,2) DEFAULT NULL COMMENT '变更后总分',
+              reason VARCHAR(1000) NOT NULL COMMENT '修改/操作原因',
+              detail JSON COMMENT '操作明细(评分点得分快照等)',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX idx_gal_grading (essay_grading_id),
+              INDEX idx_gal_operator (operator_id),
+              INDEX idx_gal_action (action)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='批阅修改审计日志表(每次修改可追溯)';
+
+          CREATE TABLE IF NOT EXISTS grading_comments (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              essay_grading_id BIGINT UNSIGNED NOT NULL COMMENT '批阅记录ID',
+              author_id BIGINT UNSIGNED NOT NULL COMMENT '评论人ID',
+              content VARCHAR(1000) NOT NULL COMMENT '评论内容',
+              visibility ENUM('internal', 'student') NOT NULL DEFAULT 'internal' COMMENT '可见范围: internal-仅老师内部 student-对学生可见',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX idx_gc_grading (essay_grading_id),
+              INDEX idx_gc_visibility (visibility)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='批阅评论表(内部讨论/学生评语)';
           SQL
 
           echo "Database initialized from inline schema."
@@ -266,6 +387,14 @@ services:
       - exam-network
     ports:
       - "9000:8080"
+    command:
+      - sh
+      - -c
+      - |
+        php artisan migrate:install --force || true
+        php artisan migrate --force
+        php artisan grading:seed-demo
+        php artisan serve --host=0.0.0.0 --port=8080
 
   frontend:
     build:

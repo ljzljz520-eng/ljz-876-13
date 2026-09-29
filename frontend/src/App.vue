@@ -115,17 +115,49 @@
               >
                 题库管理
               </router-link>
-              <router-link 
-                v-if="authStore.isTeacher" 
-                to="/exam-papers" 
+              <router-link
+                v-if="authStore.isTeacher"
+                to="/exam-papers"
                 class="nav-link"
                 :class="{ 'nav-link-active': $route.path === '/exam-papers' }"
               >
                 试卷管理
               </router-link>
-              <router-link 
-                v-if="authStore.isAdmin" 
-                to="/statistics" 
+              <router-link
+                v-if="authStore.canInitialGrade"
+                to="/grading"
+                class="nav-link"
+                :class="{ 'nav-link-active': $route.path === '/grading' }"
+              >
+                主观题批阅
+              </router-link>
+              <router-link
+                v-if="authStore.canReview"
+                to="/review"
+                class="nav-link"
+                :class="{ 'nav-link-active': $route.path === '/review' }"
+              >
+                复核工作台
+              </router-link>
+              <router-link
+                v-if="authStore.isGradingStaff"
+                to="/grading/progress"
+                class="nav-link"
+                :class="{ 'nav-link-active': $route.path === '/grading/progress' }"
+              >
+                批阅进度
+              </router-link>
+              <router-link
+                v-if="authStore.isAdmin"
+                to="/classes"
+                class="nav-link"
+                :class="{ 'nav-link-active': $route.path === '/classes' }"
+              >
+                班级管理
+              </router-link>
+              <router-link
+                v-if="authStore.isAdmin"
+                to="/statistics"
                 class="nav-link"
                 :class="{ 'nav-link-active': $route.path === '/statistics' }"
               >
@@ -157,6 +189,10 @@
           <router-link to="/records" class="mobile-nav-link" :class="{ 'mobile-nav-link-active': $route.path === '/records' }">我的成绩</router-link>
           <router-link v-if="authStore.isTeacher" to="/questions" class="mobile-nav-link" :class="{ 'mobile-nav-link-active': $route.path === '/questions' }">题库管理</router-link>
           <router-link v-if="authStore.isTeacher" to="/exam-papers" class="mobile-nav-link" :class="{ 'mobile-nav-link-active': $route.path === '/exam-papers' }">试卷管理</router-link>
+          <router-link v-if="authStore.canInitialGrade" to="/grading" class="mobile-nav-link" :class="{ 'mobile-nav-link-active': $route.path === '/grading' }">主观题批阅</router-link>
+          <router-link v-if="authStore.canReview" to="/review" class="mobile-nav-link" :class="{ 'mobile-nav-link-active': $route.path === '/review' }">复核工作台</router-link>
+          <router-link v-if="authStore.isGradingStaff" to="/grading/progress" class="mobile-nav-link" :class="{ 'mobile-nav-link-active': $route.path === '/grading/progress' }">批阅进度</router-link>
+          <router-link v-if="authStore.isAdmin" to="/classes" class="mobile-nav-link" :class="{ 'mobile-nav-link-active': $route.path === '/classes' }">班级管理</router-link>
           <router-link v-if="authStore.isAdmin" to="/statistics" class="mobile-nav-link" :class="{ 'mobile-nav-link-active': $route.path === '/statistics' }">数据统计</router-link>
         </div>
       </div>

@@ -51,4 +51,52 @@ class ExamRecord extends Model
     {
         return $this->hasMany(ExamRecordAnswer::class, 'exam_record_id');
     }
+
+    public function essayGradings()
+    {
+        return $this->hasMany(EssayGrading::class, 'exam_record_id');
+    }
+
+    /**
+     * 重算该场考试总分：客观题取答案表，主观题取分层批阅的当前生效分数。
+     * 仅当全部主观题定稿后才置为 graded，否则保持 submitted。
+     */
+    public function recalculateScore(): array
+    {
+        $this->loadMissing(['answers.question', 'answers.essayGrading']);
+
+        $total = 0.0;
+        $hasEssay = false;
+        $allEssayFinalized = true;
+
+        foreach ($this->answers as $answer) {
+            if ($answer->question && $answer->question->type === Question::TYPE_ESSAY) {
+                $hasEssay = true;
+                $grading = $answer->essayGrading;
+                if (!$grading || $grading->status !== EssayGrading::STATUS_FINALIZED) {
+                    $allEssayFinalized = false;
+                }
+                if ($grading) {
+                    $score = $grading->effectiveScore();
+                    $answer->score = $score;
+                    $answer->save();
+                    $total += $score;
+                }
+            } else {
+                $total += (float) $answer->score;
+            }
+        }
+
+        $this->score = round($total, 2);
+
+        if (!$hasEssay || $allEssayFinalized) {
+            $this->status = self::STATUS_GRADED;
+        } else {
+            $this->status = self::STATUS_SUBMITTED;
+        }
+
+        $this->save();
+
+        return ['score' => $this->score, 'status' => $this->status];
+    }
 }

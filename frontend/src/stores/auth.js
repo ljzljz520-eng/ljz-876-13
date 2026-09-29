@@ -9,6 +9,12 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoggedIn = computed(() => !!token.value)
   const isAdmin = computed(() => user.value?.role === 'admin')
   const isTeacher = computed(() => user.value?.role === 'admin' || user.value?.role === 'teacher')
+  // 可承担初评：阅卷老师 / 管理员
+  const canInitialGrade = computed(() => user.value?.role === 'admin' || user.value?.role === 'teacher')
+  // 可承担复核：复核老师 / 管理员
+  const canReview = computed(() => user.value?.role === 'admin' || user.value?.role === 'reviewer')
+  // 教职工：任一批阅身份
+  const isGradingStaff = computed(() => canInitialGrade.value || canReview.value)
 
   async function login(email, password) {
     const response = await api.post('/auth/login', { email, password })
@@ -59,6 +65,9 @@ export const useAuthStore = defineStore('auth', () => {
     isLoggedIn,
     isAdmin,
     isTeacher,
+    canInitialGrade,
+    canReview,
+    isGradingStaff,
     login,
     register,
     logout,

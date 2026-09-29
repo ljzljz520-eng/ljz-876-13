@@ -30,6 +30,7 @@
             <td class="px-6 py-4">{{ q.score }}</td>
             <td class="px-6 py-4">
               <button @click="openEditModal(q)" class="text-indigo-600 hover:text-indigo-900 mr-3">编辑</button>
+              <button v-if="q.type === 'essay'" @click="openRubric(q)" class="text-amber-600 hover:text-amber-800 mr-3">评分点</button>
               <button @click="deleteQuestion(q)" class="text-red-600 hover:text-red-900">删除</button>
             </td>
           </tr>
@@ -171,11 +172,52 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- 主观题评分点管理弹窗 -->
+    <Teleport to="body">
+      <div v-if="rubricShow" class="fixed inset-0 z-[80] flex items-center justify-center bg-gray-600/70 p-4" @click.self="rubricShow = false">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+          <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div>
+              <h3 class="text-lg font-bold text-gray-900">评分点设置</h3>
+              <p class="text-xs text-gray-400 mt-0.5 truncate max-w-md">{{ rubricQuestion?.title }}</p>
+            </div>
+            <button class="text-gray-400 hover:text-gray-600 text-2xl leading-none" @click="rubricShow = false">×</button>
+          </div>
+
+          <div class="p-6 overflow-y-auto flex-1">
+            <div class="space-y-3">
+              <div v-for="rp in rubricPoints" :key="rp.id" class="flex items-start gap-3 bg-gray-50 rounded-lg p-3">
+                <div class="flex-1">
+                  <input v-model="rp.title" class="w-full rounded border-gray-300 text-sm font-medium" placeholder="评分点名称，如：ACID 四个特性">
+                  <input v-model="rp.description" class="w-full mt-1.5 rounded border-gray-300 text-xs" placeholder="评分说明 / 参考答案要点">
+                </div>
+                <div class="flex items-center gap-1 pt-1">
+                  <input v-model.number="rp.score" type="number" min="0" step="0.5" class="w-20 rounded border-gray-300 text-sm">
+                  <span class="text-xs text-gray-400">分</span>
+                </div>
+                <button class="text-red-500 hover:text-red-700 text-sm pt-1.5" @click="removeRubric(rp)">删除</button>
+              </div>
+              <button class="w-full py-2 rounded-lg border border-dashed border-gray-300 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-600" @click="addRubricRow">+ 添加评分点</button>
+            </div>
+            <div class="mt-3 text-sm text-gray-600">
+              评分点满分合计：<span class="font-bold text-indigo-600">{{ rubricTotal }}</span> 分
+              <span class="text-xs text-gray-400">（保存后将同步为题目分值）</span>
+            </div>
+          </div>
+
+          <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
+            <button class="px-4 py-2 rounded-lg border border-gray-300 text-sm" @click="rubricShow = false">关闭</button>
+            <button class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-500" @click="saveRubric">保存评分点</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import api from '../../api'
 import { useModal } from '../../composables/useModal'
 import { useToast } from '../../composables/useToast'
@@ -312,4 +354,66 @@ onMounted(() => {
   fetchQuestions()
   fetchCategories()
 })
+
+/* ---------- 主观题评分点管理 ---------- */
+const rubricShow = ref(false)
+const rubricQuestion = ref(null)
+const rubricPoints = ref([])
+
+const rubricTotal = computed(() =>
+  Math.round(rubricPoints.value.reduce((sum, p) => sum + (Number(p.score) || 0), 0) * 100) / 100
+)
+
+const openRubric = async (question) => {
+  rubricQuestion.value = question
+  rubricPoints.value = []
+  rubricShow.value = true
+  try {
+    const { data } = await api.get(`/questions/${question.id}/rubric`)
+    rubricPoints.value = data.rubric_points.map(p => ({ ...p, _existing: true }))
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const addRubricRow = () => {
+  rubricPoints.value.push({ id: null, title: '', description: '', score: 0, sort_order: rubricPoints.value.length + 1, _existing: false })
+}
+
+const removeRubric = async (rp) => {
+  if (rp._existing && rp.id) {
+    const ok = await confirm('删除该评分点？', '删除确认')
+    if (!ok) return
+    try {
+      await api.delete(`/questions/${rubricQuestion.value.id}/rubric/${rp.id}`)
+      toast.success('评分点已删除')
+    } catch (e) {
+      console.error(e)
+    }
+  }
+  rubricPoints.value = rubricPoints.value.filter(p => p !== rp)
+}
+
+const saveRubric = async () => {
+  const rows = rubricPoints.value.filter(p => p.title.trim())
+  if (rows.length === 0) {
+    alert('请至少填写一个评分点', '提示', 'warning')
+    return
+  }
+  try {
+    for (const rp of rows) {
+      const payload = { title: rp.title, description: rp.description, score: Number(rp.score) || 0, sort_order: rp.sort_order }
+      if (rp._existing && rp.id) {
+        await api.put(`/questions/${rubricQuestion.value.id}/rubric/${rp.id}`, payload)
+      } else {
+        await api.post(`/questions/${rubricQuestion.value.id}/rubric`, payload)
+      }
+    }
+    toast.success('评分点已保存，题目分值已同步')
+    rubricShow.value = false
+    await fetchQuestions()
+  } catch (e) {
+    console.error('Failed to save rubric:', e)
+  }
+}
 </script>

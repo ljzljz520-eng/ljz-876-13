@@ -150,7 +150,12 @@ const submitExam = async () => {
       exam_record_id: examRecord.value.id,
       answers: answerData
     })
-    alert(`考试完成！得分: ${response.data.score}`, '考试完成', 'success')
+    const hasEssay = questions.value.some(q => q.type === 'essay')
+    if (hasEssay) {
+      alert('答卷已提交。客观题已自动评分，主观题将由阅卷老师按评分点批阅、复核后公布最终成绩。', '提交成功，等待批阅', 'success')
+    } else {
+      alert(`考试完成！得分: ${response.data.score}`, '考试完成', 'success')
+    }
     router.push('/records')
   } catch (e) {
     alert(e.response?.data?.message || '提交失败', '提交失败', 'error')

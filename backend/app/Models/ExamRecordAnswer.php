@@ -33,4 +33,9 @@ class ExamRecordAnswer extends Model
     {
         return $this->belongsTo(Question::class, 'question_id');
     }
+
+    public function essayGrading()
+    {
+        return $this->hasOne(EssayGrading::class, 'exam_record_answer_id');
+    }
 }
