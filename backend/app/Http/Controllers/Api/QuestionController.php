@@ -81,7 +81,73 @@ class QuestionController extends Controller
     public function show(Question $question)
     {
         return response()->json([
-            'question' => $question->load('category'),
+            'question' => $question->load(['category', 'rubricPoints']),
+        ]);
+    }
+
+    /**
+     * 同步主观题评分点：存在的更新、新增的创建、缺失且未被批阅引用的删除。
+     */
+    public function syncRubricPoints(Request $request, Question $question)
+    {
+        if (!in_array($request->user()->role, ['admin', 'teacher'])) {
+            return response()->json(['error' => '无权限维护评分点'], 403);
+        }
+
+        if ($question->type !== Question::TYPE_ESSAY) {
+            return response()->json(['error' => '只有问答题支持评分点'], 422);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'rubric_points' => 'present|array',
+            'rubric_points.*.id' => 'nullable|integer|exists:question_rubric_points,id',
+            'rubric_points.*.title' => 'required|string|max:200',
+            'rubric_points.*.max_score' => 'required|numeric|min:0.5|max:100',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $inputPoints = collect($request->input('rubric_points', []));
+        $keptIds = [];
+
+        foreach ($inputPoints as $index => $pointData) {
+            $attributes = [
+                'title' => $pointData['title'],
+                'max_score' => $pointData['max_score'],
+                'sort_order' => $index + 1,
+            ];
+
+            if (!empty($pointData['id'])) {
+                $point = $question->rubricPoints()->where('id', $pointData['id'])->first();
+                if ($point) {
+                    $point->update($attributes);
+                    $keptIds[] = $point->id;
+                    continue;
+                }
+            }
+
+            $point = $question->rubricPoints()->create($attributes);
+            $keptIds[] = $point->id;
+        }
+
+        // 删除不在提交列表中的评分点；已被批阅记录引用的评分点保留，避免历史数据断链。
+        $removable = $question->rubricPoints()->whereNotIn('id', $keptIds)->get();
+        $skipped = [];
+        foreach ($removable as $point) {
+            $referenced = \App\Models\GradingRecordPoint::where('rubric_point_id', $point->id)->exists();
+            if ($referenced) {
+                $skipped[] = $point->title;
+                continue;
+            }
+            $point->delete();
+        }
+
+        return response()->json([
+            'message' => '评分点已保存',
+            'rubric_points' => $question->rubricPoints()->get(),
+            'skipped_referenced' => $skipped,
         ]);
     }
 

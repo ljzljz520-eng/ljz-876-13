@@ -67,8 +67,11 @@ docker compose ps
 | 角色 | 邮箱 | 密码 |
 |------|-------|----------|
 | Admin | admin@example.com | password |
-| Teacher | teacher@example.com | password |
+| Teacher（阅卷老师） | teacher@example.com | password |
+| Reviewer（复核老师） | reviewer@example.com | password |
 | Student | student1@example.com | password |
+| Student | student2@example.com | password |
+| Student | student3@example.com | password |
 
 > 登录页已移除快捷测试账号模块，请手动输入账号密码。
 
@@ -83,27 +86,39 @@ node scripts/verify-readme-test-credentials.mjs --manifest qa/.runtime/test-cred
 阻断规则：任一命令失败都应视为 `README_TEST_CREDENTIALS_MISMATCH`，不得继续提交流程。
 
 ## 核心功能
-1. 用户认证：注册、登录、退出。
-2. 题库管理：题目增删改查、分类管理。
+1. 用户认证：注册、登录、退出（学生注册可选择班级）。
+2. 题库管理：题目增删改查、分类管理；问答题可维护评分点（rubric）。
 3. 试卷管理：试卷创建、编辑、题目关联。
-4. 在线考试：开始考试、提交答卷、自动评分。
-5. 成绩统计：个人成绩与管理端统计数据。
+4. 在线考试：开始考试、提交答卷、客观题自动评分。
+5. 主观题分层批阅：
+   - 初评：阅卷老师按评分点逐项打分，可填写学生评语与内部备注，拿不准的题可标记争议；
+   - 复核：复核老师只看争议题与高分样卷（初评得分率 ≥85% 自动进入），可维持原评或调整分数（调整必须填写修改原因）；
+   - 可追溯：每次初评/复核均留存批阅流水（批阅人、分数、评分点明细、修改原因、内部备注）；
+   - 学生视图：只显示得分点与简短评语，不暴露教师内部讨论与批阅人信息；
+   - 进度统计：按班级、按题目两个维度统计待初评/待复核/已定稿数量。
+6. 成绩统计：个人成绩与管理端统计数据。
 
 ## 角色权限
 | 角色 | 可访问模块 |
 |---|---|
-| Student | 在线考试、我的成绩 |
-| Teacher | 在线考试、我的成绩、题库管理、试卷管理 |
-| Admin | 全部功能（含数据统计） |
+| Student | 在线考试、我的成绩（含得分点与评语） |
+| Teacher | 在线考试、我的成绩、题库管理、试卷管理、批阅管理（初评+进度） |
+| Reviewer（`can_review` 的教师） | 以上全部 + 复核中心 |
+| Admin | 全部功能（含数据统计、复核中心） |
 
 ## 人工验证步骤（建议）
 1. 打开登录页：`http://localhost:8080/login`。
 2. 使用测试账号手动登录，确认菜单与角色权限一致。
-3. 进入题库管理，验证新增/编辑/删除流程。
+3. 进入题库管理，验证新增/编辑/删除流程；编辑问答题时可维护评分点。
 4. 进入试卷管理，验证题目关联与试卷删除流程。
-5. 学生账号完成一次在线考试并查看成绩。
-6. Admin 查看统计页数据。
-7. API 冒烟：
+5. 学生账号完成一次在线考试并查看成绩（含主观题的试卷提交后显示"批阅中"）。
+6. 分层批阅流程：
+   - 阅卷老师（teacher）进入"批阅管理"，对"操作系统综合测验"按评分点初评，可标记争议；
+   - 复核老师（reviewer）进入"复核中心"，只看到争议题与高分样卷，调整分数需填修改原因；
+   - 批阅管理"进度统计"页签查看按班级、按题目的批阅进度；
+   - 学生查看成绩详情，确认只显示得分点与评语。
+7. Admin 查看统计页数据。
+8. API 冒烟：
 
 ```bash
 docker compose exec backend sh -lc "curl -s -o /tmp/unauth.txt -w '%{http_code}\n' http://localhost:8080/api/exams"
@@ -119,11 +134,20 @@ docker compose exec backend sh -lc "curl -s -X POST http://localhost:8080/api/au
 - CORS 与基础限流已配置。
 
 ## 数据库说明
-当前初始化后包含 10 张核心表（含用户、题目、试卷、考试记录、答案记录等）。
+当前初始化后包含 14 张核心表（含用户、班级、题目、评分点、试卷、考试记录、答案记录、批阅流水等）。
 
 详见：
 - `docs/Database.sql`
-- `docker-compose.yml` 中 `db-init` 初始化段
+- `docker-compose.yml` 中 `db-init` 初始化段（含面向老库的幂等升级段）
+
+## 端到端验证脚本
+后端提供不依赖 Docker/MySQL 的分层批阅全流程验证脚本（SQLite 环境，覆盖初评、复核、追溯、学生可见性、进度统计共 62 项断言）：
+
+```bash
+cd backend
+composer install
+php tests/e2e-grading.php
+```
 
 ## 证据目录
 测试与质检证据统一放在 `evidence/`（含 `evidence/run-slot*/`）目录。

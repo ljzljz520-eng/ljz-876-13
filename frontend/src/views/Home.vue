@@ -110,6 +110,44 @@
           </div>
         </router-link>
         
+        <router-link to="/grading" class="card-base card-accent-left card-accent-green p-6 group h-full hover:bg-green-50/10">
+          <div class="flex items-start h-full">
+            <div class="flex-shrink-0 w-14 h-14 bg-green-100/80 rounded-2xl flex items-center justify-center mr-5 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300 shadow-sm">
+              <svg class="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </div>
+            <div class="flex-1 flex flex-col justify-between">
+              <div>
+                <h3 class="text-xl font-bold text-gray-900 mb-2 group-hover:text-green-700 transition-colors">批阅管理</h3>
+                <p class="text-gray-500 text-sm leading-relaxed">主观题按评分点初评，查看按班级、按题目的批阅进度。</p>
+              </div>
+              <div class="mt-4 flex items-center text-sm font-medium text-green-600 opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all duration-300">
+                开始批阅 <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+              </div>
+            </div>
+          </div>
+        </router-link>
+
+        <router-link v-if="authStore.canReview" to="/grading/review" class="card-base card-accent-left card-accent-purple p-6 group h-full hover:bg-purple-50/10">
+          <div class="flex items-start h-full">
+            <div class="flex-shrink-0 w-14 h-14 bg-violet-100/80 rounded-2xl flex items-center justify-center mr-5 group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300 shadow-sm">
+              <svg class="w-7 h-7 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <div class="flex-1 flex flex-col justify-between">
+              <div>
+                <h3 class="text-xl font-bold text-gray-900 mb-2 group-hover:text-violet-700 transition-colors">复核中心</h3>
+                <p class="text-gray-500 text-sm leading-relaxed">复核争议题与高分样卷，调整分数留痕可追溯。</p>
+              </div>
+              <div class="mt-4 flex items-center text-sm font-medium text-violet-600 opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all duration-300">
+                进入复核 <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+              </div>
+            </div>
+          </div>
+        </router-link>
+
         <router-link v-if="authStore.isAdmin" to="/statistics" class="card-base card-accent-left card-accent-blue p-6 group h-full hover:bg-sky-50/10">
           <div class="flex items-start h-full">
             <div class="flex-shrink-0 w-14 h-14 bg-sky-100/80 rounded-2xl flex items-center justify-center mr-5 group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300 shadow-sm">

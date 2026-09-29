@@ -33,7 +33,7 @@ class ExamRecord extends Model
 
     public const STATUSES = [
         self::STATUS_IN_PROGRESS => '进行中',
-        self::STATUS_SUBMITTED => '已提交',
+        self::STATUS_SUBMITTED => '待批阅',
         self::STATUS_GRADED => '已评分',
     ];
 

@@ -18,6 +18,8 @@ class User extends Authenticatable
         'real_name',
         'role',
         'status',
+        'class_id',
+        'can_review',
     ];
 
     protected $hidden = [
@@ -29,6 +31,8 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
         'status' => 'boolean',
+        'class_id' => 'integer',
+        'can_review' => 'boolean',
     ];
 
     public const ROLE_ADMIN = 'admin';
@@ -54,6 +58,16 @@ class User extends Authenticatable
     public function isStudent(): bool
     {
         return $this->role === self::ROLE_STUDENT;
+    }
+
+    public function canReview(): bool
+    {
+        return $this->isAdmin() || ($this->isTeacher() && (bool) $this->can_review);
+    }
+
+    public function classRoom()
+    {
+        return $this->belongsTo(ClassRoom::class, 'class_id');
     }
 
     public function questions()

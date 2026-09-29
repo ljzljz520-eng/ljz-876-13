@@ -150,7 +150,11 @@ const submitExam = async () => {
       exam_record_id: examRecord.value.id,
       answers: answerData
     })
-    alert(`考试完成！得分: ${response.data.score}`, '考试完成', 'success')
+    if (response.data.has_subjective) {
+      alert(`答卷已提交！客观题得分: ${response.data.score}，主观题将由老师批阅后公布最终成绩。`, '提交成功', 'success')
+    } else {
+      alert(`考试完成！得分: ${response.data.score}`, '考试完成', 'success')
+    }
     router.push('/records')
   } catch (e) {
     alert(e.response?.data?.message || '提交失败', '提交失败', 'error')

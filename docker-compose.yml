@@ -46,10 +46,8 @@ services:
 
           table_exists=$$(mysql -h db -uroot -proot -Nse "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='exam_system' AND table_name='users';")
           if [ "$$table_exists" = "1" ]; then
-            echo "Database already initialized, skip seed."
-            exit 0
-          fi
-
+            echo "Database already initialized, skip base seed."
+          else
           mysql -h db -uroot -proot exam_system <<'SQL'
           SET NAMES utf8mb4;
           SET CHARACTER SET utf8mb4;
@@ -229,6 +227,154 @@ services:
           SQL
 
           echo "Database initialized from inline schema."
+          fi
+
+          # ========== 分层批阅功能：幂等升级段（新库/老库均安全执行） ==========
+          mysql -h db -uroot -proot exam_system <<'SQL'
+          SET NAMES utf8mb4;
+
+          CREATE TABLE IF NOT EXISTS classes (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              name VARCHAR(100) NOT NULL COMMENT '班级名称',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='班级表';
+
+          CREATE TABLE IF NOT EXISTS question_rubric_points (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              question_id BIGINT UNSIGNED NOT NULL COMMENT '题目ID',
+              title VARCHAR(200) NOT NULL COMMENT '评分点名称',
+              max_score DECIMAL(5,2) NOT NULL COMMENT '评分点满分',
+              sort_order INT DEFAULT 0 COMMENT '排序',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX idx_question_id (question_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='主观题评分点表';
+
+          CREATE TABLE IF NOT EXISTS grading_records (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              exam_record_answer_id BIGINT UNSIGNED NOT NULL COMMENT '考生答案ID',
+              grader_id BIGINT UNSIGNED NOT NULL COMMENT '批阅人ID',
+              stage ENUM('initial', 'review') NOT NULL COMMENT '阶段: initial-初评 review-复核',
+              total_score DECIMAL(5,2) NOT NULL COMMENT '本次评定分数',
+              comment TEXT COMMENT '学生可见评语',
+              internal_note TEXT COMMENT '内部备注(学生不可见)',
+              reason VARCHAR(500) COMMENT '修改原因(复核调整必填)',
+              review_flag ENUM('none', 'disputed', 'high_score') DEFAULT 'none' COMMENT '本次设置的复核标记',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX idx_answer (exam_record_answer_id),
+              INDEX idx_grader (grader_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='批阅流水表(审计追溯)';
+
+          CREATE TABLE IF NOT EXISTS grading_record_points (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              grading_record_id BIGINT UNSIGNED NOT NULL COMMENT '批阅流水ID',
+              rubric_point_id BIGINT UNSIGNED NOT NULL COMMENT '评分点ID',
+              score DECIMAL(5,2) NOT NULL COMMENT '该评分点得分',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX idx_grading_record_id (grading_record_id),
+              INDEX idx_rubric_point_id (rubric_point_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='批阅评分点得分表';
+
+          SET @c := (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='exam_system' AND table_name='users' AND column_name='class_id');
+          SET @s := IF(@c=0, 'ALTER TABLE users ADD COLUMN class_id BIGINT UNSIGNED NULL COMMENT ''班级ID'' AFTER status', 'SELECT 1');
+          PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+          SET @c := (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='exam_system' AND table_name='users' AND column_name='can_review');
+          SET @s := IF(@c=0, 'ALTER TABLE users ADD COLUMN can_review TINYINT(1) DEFAULT 0 COMMENT ''是否可复核: 1-是 0-否'' AFTER class_id', 'SELECT 1');
+          PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+          SET @c := (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='exam_system' AND table_name='exam_record_answers' AND column_name='grading_status');
+          SET @s := IF(@c=0, 'ALTER TABLE exam_record_answers ADD COLUMN grading_status ENUM(''none'',''pending'',''initial_graded'',''finalized'') DEFAULT ''none'' COMMENT ''批阅状态'' AFTER score', 'SELECT 1');
+          PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+          SET @c := (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='exam_system' AND table_name='exam_record_answers' AND column_name='review_flag');
+          SET @s := IF(@c=0, 'ALTER TABLE exam_record_answers ADD COLUMN review_flag ENUM(''none'',''disputed'',''high_score'') DEFAULT ''none'' COMMENT ''复核标记: disputed-争议 high_score-高分样卷'' AFTER grading_status', 'SELECT 1');
+          PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+          SET @c := (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='exam_system' AND table_name='exam_record_answers' AND column_name='student_comment');
+          SET @s := IF(@c=0, 'ALTER TABLE exam_record_answers ADD COLUMN student_comment TEXT NULL COMMENT ''学生可见评语'' AFTER review_flag', 'SELECT 1');
+          PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+          INSERT INTO classes (id, name) SELECT 1, '高三(1)班' FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM classes WHERE id = 1);
+          INSERT INTO classes (id, name) SELECT 2, '高三(2)班' FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM classes WHERE id = 2);
+
+          INSERT INTO users (username, email, password, real_name, role, status, class_id, can_review)
+          SELECT 'reviewer', 'reviewer@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', '复核老师', 'teacher', 1, NULL, 1
+          FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'reviewer@example.com');
+
+          INSERT INTO users (username, email, password, real_name, role, status, class_id, can_review)
+          SELECT 'student2', 'student2@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', '学生用户2', 'student', 1, 1, 0
+          FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'student2@example.com');
+
+          INSERT INTO users (username, email, password, real_name, role, status, class_id, can_review)
+          SELECT 'student3', 'student3@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', '学生用户3', 'student', 1, 2, 0
+          FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'student3@example.com');
+
+          UPDATE users SET class_id = 1 WHERE email = 'student1@example.com' AND class_id IS NULL;
+
+          INSERT INTO questions (category_id, type, title, options, answer, analysis, difficulty, score, created_by, status)
+          SELECT 4, 'essay', '简述操作系统的主要功能。', NULL,
+          '参考答案：操作系统的主要功能包括：1）进程管理：进程的创建、撤销、调度与同步；2）存储管理：内存分配、回收、保护与虚拟存储；3）文件管理：文件的组织、存取、共享与保护；4）设备管理：设备分配、驱动程序与缓冲管理；5）用户接口：命令接口与程序接口（系统调用）。',
+          '操作系统五大功能是核心考点，按点给分。', 2, 8.00, 2, 1
+          FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM questions WHERE title = '简述操作系统的主要功能。');
+
+          INSERT INTO questions (category_id, type, title, options, answer, analysis, difficulty, score, created_by, status)
+          SELECT 4, 'essay', '什么是死锁？简述产生死锁的四个必要条件。', NULL,
+          '参考答案：死锁是指多个进程在运行过程中因争夺资源而造成的一种僵局，若无外力作用，这些进程都将无法继续推进。四个必要条件：1）互斥条件：资源一次只能被一个进程占用；2）占有且等待条件：进程已占有部分资源，又申请新资源而阻塞；3）不可剥夺条件：进程已占有的资源不能被强制收回；4）循环等待条件：存在进程资源的循环等待链。',
+          '四个必要条件缺一不可，破坏任一条件即可预防死锁。', 2, 9.00, 2, 1
+          FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM questions WHERE title = '什么是死锁？简述产生死锁的四个必要条件。');
+
+          INSERT INTO question_rubric_points (question_id, title, max_score, sort_order)
+          SELECT q.id, '进程管理', 2.00, 1 FROM questions q WHERE q.title = '简述操作系统的主要功能。'
+          AND NOT EXISTS (SELECT 1 FROM question_rubric_points r WHERE r.question_id = q.id AND r.title = '进程管理');
+          INSERT INTO question_rubric_points (question_id, title, max_score, sort_order)
+          SELECT q.id, '存储管理', 2.00, 2 FROM questions q WHERE q.title = '简述操作系统的主要功能。'
+          AND NOT EXISTS (SELECT 1 FROM question_rubric_points r WHERE r.question_id = q.id AND r.title = '存储管理');
+          INSERT INTO question_rubric_points (question_id, title, max_score, sort_order)
+          SELECT q.id, '文件管理', 2.00, 3 FROM questions q WHERE q.title = '简述操作系统的主要功能。'
+          AND NOT EXISTS (SELECT 1 FROM question_rubric_points r WHERE r.question_id = q.id AND r.title = '文件管理');
+          INSERT INTO question_rubric_points (question_id, title, max_score, sort_order)
+          SELECT q.id, '设备管理与用户接口', 2.00, 4 FROM questions q WHERE q.title = '简述操作系统的主要功能。'
+          AND NOT EXISTS (SELECT 1 FROM question_rubric_points r WHERE r.question_id = q.id AND r.title = '设备管理与用户接口');
+
+          INSERT INTO question_rubric_points (question_id, title, max_score, sort_order)
+          SELECT q.id, '死锁概念阐述', 3.00, 1 FROM questions q WHERE q.title = '什么是死锁？简述产生死锁的四个必要条件。'
+          AND NOT EXISTS (SELECT 1 FROM question_rubric_points r WHERE r.question_id = q.id AND r.title = '死锁概念阐述');
+          INSERT INTO question_rubric_points (question_id, title, max_score, sort_order)
+          SELECT q.id, '互斥条件', 1.50, 2 FROM questions q WHERE q.title = '什么是死锁？简述产生死锁的四个必要条件。'
+          AND NOT EXISTS (SELECT 1 FROM question_rubric_points r WHERE r.question_id = q.id AND r.title = '互斥条件');
+          INSERT INTO question_rubric_points (question_id, title, max_score, sort_order)
+          SELECT q.id, '占有且等待条件', 1.50, 3 FROM questions q WHERE q.title = '什么是死锁？简述产生死锁的四个必要条件。'
+          AND NOT EXISTS (SELECT 1 FROM question_rubric_points r WHERE r.question_id = q.id AND r.title = '占有且等待条件');
+          INSERT INTO question_rubric_points (question_id, title, max_score, sort_order)
+          SELECT q.id, '不可剥夺条件', 1.50, 4 FROM questions q WHERE q.title = '什么是死锁？简述产生死锁的四个必要条件。'
+          AND NOT EXISTS (SELECT 1 FROM question_rubric_points r WHERE r.question_id = q.id AND r.title = '不可剥夺条件');
+          INSERT INTO question_rubric_points (question_id, title, max_score, sort_order)
+          SELECT q.id, '循环等待条件', 1.50, 5 FROM questions q WHERE q.title = '什么是死锁？简述产生死锁的四个必要条件。'
+          AND NOT EXISTS (SELECT 1 FROM question_rubric_points r WHERE r.question_id = q.id AND r.title = '循环等待条件');
+
+          INSERT INTO exam_papers (title, description, total_score, total_time, question_count, type, created_by, status)
+          SELECT '操作系统综合测验', '包含客观题与主观题，主观题采用分层批阅（初评+复核）', 20.00, 45, 4, 'fixed', 2, 1
+          FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM exam_papers WHERE title = '操作系统综合测验');
+
+          INSERT INTO exam_paper_questions (exam_paper_id, question_id, sort_order, score)
+          SELECT p.id, 1, 1, 2.00 FROM exam_papers p WHERE p.title = '操作系统综合测验'
+          AND NOT EXISTS (SELECT 1 FROM exam_paper_questions epq WHERE epq.exam_paper_id = p.id AND epq.question_id = 1);
+          INSERT INTO exam_paper_questions (exam_paper_id, question_id, sort_order, score)
+          SELECT p.id, 2, 2, 1.00 FROM exam_papers p WHERE p.title = '操作系统综合测验'
+          AND NOT EXISTS (SELECT 1 FROM exam_paper_questions epq WHERE epq.exam_paper_id = p.id AND epq.question_id = 2);
+          INSERT INTO exam_paper_questions (exam_paper_id, question_id, sort_order, score)
+          SELECT p.id, q.id, 3, 8.00 FROM exam_papers p, questions q
+          WHERE p.title = '操作系统综合测验' AND q.title = '简述操作系统的主要功能。'
+          AND NOT EXISTS (SELECT 1 FROM exam_paper_questions epq WHERE epq.exam_paper_id = p.id AND epq.question_id = q.id);
+          INSERT INTO exam_paper_questions (exam_paper_id, question_id, sort_order, score)
+          SELECT p.id, q.id, 4, 9.00 FROM exam_papers p, questions q
+          WHERE p.title = '操作系统综合测验' AND q.title = '什么是死锁？简述产生死锁的四个必要条件。'
+          AND NOT EXISTS (SELECT 1 FROM exam_paper_questions epq WHERE epq.exam_paper_id = p.id AND epq.question_id = q.id);
+          SQL
+
+          echo "Grading schema upgrade applied."
     networks:
       - exam-network
 

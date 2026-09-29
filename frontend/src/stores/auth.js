@@ -9,6 +9,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoggedIn = computed(() => !!token.value)
   const isAdmin = computed(() => user.value?.role === 'admin')
   const isTeacher = computed(() => user.value?.role === 'admin' || user.value?.role === 'teacher')
+  const canReview = computed(() => isAdmin.value || (user.value?.role === 'teacher' && !!user.value?.can_review))
 
   async function login(email, password) {
     const response = await api.post('/auth/login', { email, password })
@@ -59,6 +60,7 @@ export const useAuthStore = defineStore('auth', () => {
     isLoggedIn,
     isAdmin,
     isTeacher,
+    canReview,
     login,
     register,
     logout,

@@ -126,7 +126,28 @@
                       <label class="block text-sm font-semibold text-gray-700 mb-2">解析</label>
                       <textarea v-model="form.analysis" rows="2" class="input-base resize-y" placeholder="请输入题目解析（选填）"></textarea>
                     </div>
-                    
+
+                    <!-- Rubric Points (主观题评分点) -->
+                    <div v-if="form.type === 'essay'" class="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+                      <div class="flex justify-between items-center mb-3">
+                        <label class="block text-sm font-semibold text-gray-700">评分点设置（分层批阅按点给分）</label>
+                        <button type="button" @click="addRubricPoint" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium">+ 添加评分点</button>
+                      </div>
+                      <div v-if="form.rubric_points.length === 0" class="text-xs text-gray-400 py-1">
+                        未设置评分点时，阅卷老师将直接给总分。
+                      </div>
+                      <div v-for="(point, index) in form.rubric_points" :key="index" class="flex items-center gap-3 mb-2">
+                        <input v-model="point.title" type="text" class="input-base flex-1" :placeholder="`评分点 ${index + 1} 名称，如：概念阐述`" />
+                        <input v-model.number="point.max_score" type="number" min="0.5" step="0.5" class="input-base w-24" placeholder="满分" />
+                        <button type="button" @click="removeRubricPoint(index)" class="text-red-500 hover:text-red-700 flex-shrink-0 p-1">
+                          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                      <p v-if="form.rubric_points.length > 0" class="text-xs text-gray-500 mt-2">
+                        评分点满分合计：{{ rubricTotal }} 分（建议与题目分值一致）
+                      </p>
+                    </div>
+
                     <!-- Meta -->
                     <div class="grid grid-cols-2 gap-5">
                       <div>
@@ -175,7 +196,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import api from '../../api'
 import { useModal } from '../../composables/useModal'
 import { useToast } from '../../composables/useToast'
@@ -200,10 +221,23 @@ const defaultForm = {
   answer: '',
   analysis: '',
   difficulty: 1,
-  score: 1
+  score: 1,
+  rubric_points: []
 }
 
 const form = ref({ ...defaultForm })
+
+const rubricTotal = computed(() => {
+  return form.value.rubric_points.reduce((sum, p) => sum + (Number(p.max_score) || 0), 0)
+})
+
+const addRubricPoint = () => {
+  form.value.rubric_points.push({ id: null, title: '', max_score: 1 })
+}
+
+const removeRubricPoint = (index) => {
+  form.value.rubric_points.splice(index, 1)
+}
 
 const typeNames = {
   single_choice: '单选题',
@@ -245,11 +279,11 @@ const fetchCategories = async () => {
 const openAddModal = () => {
   isEditing.value = false
   editingId.value = null
-  form.value = { ...defaultForm, options: { A: '', B: '', C: '', D: '' } }
+  form.value = { ...defaultForm, options: { A: '', B: '', C: '', D: '' }, rubric_points: [] }
   showModal.value = true
 }
 
-const openEditModal = (question) => {
+const openEditModal = async (question) => {
   isEditing.value = true
   editingId.value = question.id
   form.value = {
@@ -260,9 +294,22 @@ const openEditModal = (question) => {
     answer: question.answer,
     analysis: question.analysis || '',
     difficulty: question.difficulty,
-    score: question.score
+    score: question.score,
+    rubric_points: []
   }
   showModal.value = true
+  if (question.type === 'essay') {
+    try {
+      const response = await api.get(`/questions/${question.id}`)
+      form.value.rubric_points = (response.data.question.rubric_points || []).map(p => ({
+        id: p.id,
+        title: p.title,
+        max_score: Number(p.max_score)
+      }))
+    } catch (e) {
+      console.error('Failed to fetch rubric points:', e)
+    }
+  }
 }
 
 const closeModal = () => {
@@ -274,16 +321,39 @@ const saveQuestion = async () => {
     alert('请填写必填字段：分类、题目内容、正确答案', '提示', 'warning')
     return
   }
+  if (form.value.type === 'essay') {
+    for (const p of form.value.rubric_points) {
+      if (!p.title.trim() || !(Number(p.max_score) > 0)) {
+        alert('评分点需要填写名称且满分大于 0', '提示', 'warning')
+        return
+      }
+    }
+  }
   saving.value = true
   try {
     const data = { ...form.value }
+    delete data.rubric_points
     if (!['single_choice', 'multiple_choice'].includes(data.type)) {
       data.options = null
     }
+    let questionId = editingId.value
     if (isEditing.value) {
       await api.put(`/questions/${editingId.value}`, data)
     } else {
-      await api.post('/questions', data)
+      const response = await api.post('/questions', data)
+      questionId = response.data.question.id
+    }
+    if (form.value.type === 'essay' && questionId) {
+      const syncResp = await api.put(`/questions/${questionId}/rubric-points`, {
+        rubric_points: form.value.rubric_points.map(p => ({
+          id: p.id || undefined,
+          title: p.title.trim(),
+          max_score: Number(p.max_score)
+        }))
+      })
+      if (syncResp.data.skipped_referenced?.length) {
+        toast.warning(`以下评分点已被批阅记录引用，未删除：${syncResp.data.skipped_referenced.join('、')}`)
+      }
     }
     closeModal()
     await fetchQuestions()

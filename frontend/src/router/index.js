@@ -39,6 +39,24 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/records/:id',
+    name: 'RecordDetail',
+    component: () => import('../views/exams/RecordDetail.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/grading',
+    name: 'Grading',
+    component: () => import('../views/grading/Index.vue'),
+    meta: { requiresAuth: true, roles: ['admin', 'teacher'] }
+  },
+  {
+    path: '/grading/review',
+    name: 'GradingReview',
+    component: () => import('../views/grading/Review.vue'),
+    meta: { requiresAuth: true, roles: ['admin', 'teacher'], requiresReview: true }
+  },
+  {
     path: '/questions',
     name: 'Questions',
     component: () => import('../views/questions/Index.vue'),
@@ -72,6 +90,11 @@ router.beforeEach((to, from, next) => {
   }
 
   if (to.meta.roles && !to.meta.roles.includes(authStore.user?.role)) {
+    next('/')
+    return
+  }
+
+  if (to.meta.requiresReview && !authStore.canReview) {
     next('/')
     return
   }

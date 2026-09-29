@@ -15,6 +15,7 @@
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">得分</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">考试时间</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
@@ -22,11 +23,14 @@
             <td class="px-6 py-4 whitespace-nowrap">{{ record.exam_paper?.title }}</td>
             <td class="px-6 py-4 whitespace-nowrap font-bold" :class="{'text-green-600': record.score >= 60, 'text-red-600': record.score < 60}">{{ record.score }} 分</td>
             <td class="px-6 py-4 whitespace-nowrap">
-              <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                {{ record.status === 'graded' ? '已评分' : record.status }}
+              <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full" :class="statusClass(record.status)">
+                {{ statusLabel(record.status) }}
               </span>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ new Date(record.created_at).toLocaleString() }}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+              <router-link :to="`/records/${record.id}`" class="text-indigo-600 hover:text-indigo-900 font-medium">查看详情</router-link>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -40,6 +44,21 @@ import api from '../../api'
 
 const records = ref([])
 const loading = ref(true)
+
+const statusLabel = (status) => {
+  const labels = {
+    in_progress: '进行中',
+    submitted: '批阅中',
+    graded: '已评分'
+  }
+  return labels[status] || status
+}
+
+const statusClass = (status) => {
+  if (status === 'graded') return 'bg-green-100 text-green-800'
+  if (status === 'submitted') return 'bg-orange-100 text-orange-700'
+  return 'bg-gray-100 text-gray-600'
+}
 
 onMounted(async () => {
   try {

@@ -1,8 +1,10 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ClassRoomController;
 use App\Http\Controllers\Api\ExamController;
 use App\Http\Controllers\Api\ExamPaperController;
+use App\Http\Controllers\Api\GradingController;
 use App\Http\Controllers\Api\QuestionController;
 use App\Http\Controllers\Api\ScoreController;
 use Illuminate\Support\Facades\Route;
@@ -11,6 +13,9 @@ Route::middleware('api')->prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
     Route::post('/register', [AuthController::class, 'register']);
 });
+
+// 班级列表（注册页使用，公开只读）
+Route::middleware('api')->get('/classes', [ClassRoomController::class, 'index']);
 
 Route::middleware(['api', 'auth:sanctum', 'throttle:60,1'])->group(function () {
     Route::prefix('auth')->group(function () {
@@ -25,6 +30,7 @@ Route::middleware(['api', 'auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::post('/categories', [QuestionController::class, 'storeCategory']);
         Route::get('/{question}', [QuestionController::class, 'show']);
         Route::put('/{question}', [QuestionController::class, 'update']);
+        Route::put('/{question}/rubric-points', [QuestionController::class, 'syncRubricPoints']);
         Route::delete('/{question}', [QuestionController::class, 'destroy']);
     });
 
@@ -45,6 +51,16 @@ Route::middleware(['api', 'auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::post('/{examPaper}/submit', [ExamController::class, 'submit']);
         Route::get('/records', [ExamController::class, 'myRecords']);
         Route::get('/records/{record}', [ExamController::class, 'showRecord']);
+    });
+
+    Route::prefix('grading')->group(function () {
+        Route::get('/papers', [GradingController::class, 'papers']);
+        Route::get('/tasks', [GradingController::class, 'tasks']);
+        Route::post('/answers/{answer}/initial', [GradingController::class, 'storeInitial']);
+        Route::get('/review-queue', [GradingController::class, 'reviewQueue']);
+        Route::post('/answers/{answer}/review', [GradingController::class, 'storeReview']);
+        Route::get('/answers/{answer}/history', [GradingController::class, 'history']);
+        Route::get('/progress/{examPaper}', [GradingController::class, 'progress']);
     });
 
     Route::prefix('scores')->group(function () {

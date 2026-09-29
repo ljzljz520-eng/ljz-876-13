@@ -22,6 +22,14 @@
             <p v-if="errors.real_name" class="mt-1 text-sm text-red-600">{{ errors.real_name }}</p>
           </div>
           <div>
+            <label for="class_id" class="sr-only">班级</label>
+            <select v-model="form.class_id" id="class_id" name="class_id" class="appearance-none rounded-none relative block w-full px-3 py-2 border text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm bg-white" :class="errors.class_id ? 'border-red-500' : 'border-gray-300'">
+              <option value="">请选择班级（可选）</option>
+              <option v-for="cls in classes" :key="cls.id" :value="cls.id">{{ cls.name }}</option>
+            </select>
+            <p v-if="errors.class_id" class="mt-1 text-sm text-red-600">{{ errors.class_id }}</p>
+          </div>
+          <div>
             <label for="password" class="sr-only">密码</label>
             <input v-model="form.password" id="password" name="password" type="password" required class="appearance-none rounded-none relative block w-full px-3 py-2 border placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" :class="errors.password ? 'border-red-500' : 'border-gray-300'" placeholder="密码" />
             <p v-if="errors.password" class="mt-1 text-sm text-red-600">{{ errors.password }}</p>
@@ -47,9 +55,10 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
+import api from '../../api'
 import { z } from 'zod'
 
 const router = useRouter()
@@ -59,13 +68,24 @@ const form = reactive({
   username: '',
   email: '',
   real_name: '',
+  class_id: '',
   password: '',
   password_confirmation: ''
 })
 
+const classes = ref([])
 const loading = ref(false)
 const error = ref('')
 const errors = ref({})
+
+onMounted(async () => {
+  try {
+    const response = await api.get('/classes')
+    classes.value = response.data.classes
+  } catch (e) {
+    console.error('Failed to fetch classes:', e)
+  }
+})
 
 const registerSchema = z.object({
   username: z.string().min(2, '用户名至少2个字符').max(50, '用户名最多50个字符'),
@@ -95,7 +115,8 @@ const handleRegister = async () => {
 
   loading.value = true
   try {
-    await authStore.register(form)
+    const payload = { ...form, class_id: form.class_id || null }
+    await authStore.register(payload)
     router.push('/')
   } catch (e) {
     const errorData = e.response?.data

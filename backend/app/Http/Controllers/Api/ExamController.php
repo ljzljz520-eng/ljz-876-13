@@ -105,9 +105,9 @@ class ExamController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'exam_record_id' => 'required|exists:exam_records,id',
-            'answers' => 'required|array',
+            'answers' => 'present|array',
             'answers.*.question_id' => 'required|exists:questions,id',
-            'answers.*.answer' => 'required|string',
+            'answers.*.answer' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -121,23 +121,38 @@ class ExamController extends Controller
             ->firstOrFail();
 
         $totalScore = 0;
+        $hasSubjective = false;
         $questionMap = $examPaper->questions->keyBy('id');
+        $submittedAnswers = collect($request->answers)->keyBy('question_id');
 
-        foreach ($request->answers as $answerData) {
-            $question = $questionMap->get($answerData['question_id']);
-            if (!$question) {
+        // 遍历试卷全部题目：未作答的题目也生成记录，保证批阅进度统计完整。
+        foreach ($questionMap as $question) {
+            $answerData = $submittedAnswers->get($question->id);
+            $userAnswer = $answerData['answer'] ?? '';
+
+            if ($question->type === Question::TYPE_ESSAY) {
+                $hasSubjective = true;
+                ExamRecordAnswer::create([
+                    'exam_record_id' => $record->id,
+                    'question_id' => $question->id,
+                    'answer' => $userAnswer,
+                    'is_correct' => false,
+                    'score' => 0,
+                    'grading_status' => ExamRecordAnswer::GRADING_PENDING,
+                ]);
                 continue;
             }
 
-            $isCorrect = $this->checkAnswer($question, $answerData['answer']);
+            $isCorrect = $userAnswer !== '' && $this->checkAnswer($question, $userAnswer);
             $score = $isCorrect ? $question->pivot->score : 0;
 
             ExamRecordAnswer::create([
                 'exam_record_id' => $record->id,
-                'question_id' => $answerData['question_id'],
-                'answer' => $answerData['answer'],
+                'question_id' => $question->id,
+                'answer' => $userAnswer,
                 'is_correct' => $isCorrect,
                 'score' => $score,
+                'grading_status' => ExamRecordAnswer::GRADING_NONE,
             ]);
 
             $totalScore += $score;
@@ -146,12 +161,13 @@ class ExamController extends Controller
         $record->update([
             'end_time' => now(),
             'score' => $totalScore,
-            'status' => 'graded',
+            'status' => $hasSubjective ? ExamRecord::STATUS_SUBMITTED : ExamRecord::STATUS_GRADED,
         ]);
 
         return response()->json([
-            'message' => '提交成功',
+            'message' => $hasSubjective ? '提交成功，主观题待老师批阅' : '提交成功',
             'score' => $totalScore,
+            'has_subjective' => $hasSubjective,
             'exam_record' => $record->load('answers'),
         ]);
     }
@@ -174,10 +190,67 @@ class ExamController extends Controller
             return response()->json(['message' => '无权查看此记录'], 403);
         }
 
-        $record->load(['examPaper.questions', 'answers.question']);
+        $record->load(['examPaper', 'answers.question']);
+
+        // 学生可见视图：只暴露得分点与简短评语，不暴露内部讨论、修改原因与批阅人。
+        $answers = $record->answers->map(function ($answer) {
+            $question = $answer->question;
+            $data = [
+                'id' => $answer->id,
+                'question_id' => $answer->question_id,
+                'answer' => $answer->answer,
+                'is_correct' => (bool) $answer->is_correct,
+                'score' => (float) $answer->score,
+                'grading_status' => $answer->grading_status,
+                'question' => $question ? [
+                    'id' => $question->id,
+                    'type' => $question->type,
+                    'title' => $question->title,
+                    'options' => $question->options,
+                    'analysis' => $question->analysis,
+                ] : null,
+                'rubric_scores' => null,
+                'student_comment' => null,
+            ];
+
+            if ($answer->grading_status !== ExamRecordAnswer::GRADING_NONE
+                && $answer->grading_status !== ExamRecordAnswer::GRADING_PENDING) {
+                $finalGrading = $answer->gradingRecords()
+                    ->with('points.rubricPoint')
+                    ->orderByDesc('id')
+                    ->first();
+
+                if ($finalGrading) {
+                    $data['rubric_scores'] = $finalGrading->points->map(function ($p) {
+                        return [
+                            'title' => $p->rubricPoint?->title,
+                            'max_score' => (float) ($p->rubricPoint?->max_score ?? 0),
+                            'score' => (float) $p->score,
+                        ];
+                    })->values();
+                }
+                $data['student_comment'] = $answer->student_comment;
+            }
+
+            return $data;
+        })->values();
 
         return response()->json([
-            'record' => $record,
+            'record' => [
+                'id' => $record->id,
+                'exam_paper_id' => $record->exam_paper_id,
+                'start_time' => $record->start_time,
+                'end_time' => $record->end_time,
+                'score' => (float) $record->score,
+                'status' => $record->status,
+                'exam_paper' => $record->examPaper ? [
+                    'id' => $record->examPaper->id,
+                    'title' => $record->examPaper->title,
+                    'total_score' => (float) $record->examPaper->total_score,
+                    'total_time' => $record->examPaper->total_time,
+                ] : null,
+                'answers' => $answers,
+            ],
         ]);
     }
 
